@@ -22,6 +22,15 @@ app = Flask(__name__)
 # Enable CORS for all routes under /api/ from any origin
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
+@app.route('/', methods=['GET'])
+def home():
+    """Root endpoint to prevent 404 errors on home page load"""
+    return jsonify({
+        'message': 'Welcome to the UHI Dashboard API Backend!',
+        'documentation': 'Please use the /api/ routes to fetch data.',
+        'status': 'online'
+    }), 200
+
 # Initialize Earth Engine Safely for Cloud Deployment
 ee_initialized = False
 try:
