@@ -1,0 +1,39 @@
+# ======================
+# Python Backend
+# ======================
+backend/venv/
+backend/__pycache__/
+backend/*.pyc
+backend/.env
+
+# Google Earth Engine Credentials
+backend/credentials/gee-key.json
+
+# ======================
+# React/Vite Frontend
+# ======================
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+
+# ======================
+# Environment Files
+# ======================
+.env
+.env.*
+
+# ======================
+# Logs
+# ======================
+*.log
+
+# ======================
+# VS Code
+# ======================
+.vscode/
+
+# ======================
+# OS Files
+# ======================
+.DS_Store
+Thumbs.db

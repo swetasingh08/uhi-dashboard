@@ -1,0 +1,19 @@
+
+services:
+  backend:
+    build: ./backend
+    container_name: uhi_backend
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend/credentials/gee-key.json:/app/credentials/gee-key.json:ro
+    env_file:
+      - ./backend/.env
+
+  frontend:
+    build: ./frontend
+    container_name: uhi_frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
