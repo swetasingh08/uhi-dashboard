@@ -19,23 +19,30 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+# Enable CORS for all routes under /api/ from any origin
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
-# Initialize Earth Engine
+# Initialize Earth Engine Safely for Cloud Deployment
+ee_initialized = False
 try:
     service_account = os.environ.get('GEE_SERVICE_ACCOUNT')
-    key_path = os.environ.get('GEE_PRIVATE_KEY_PATH')
+    key_path = os.environ.get('GEE_PRIVATE_KEY_PATH', '/etc/secrets/gee-key.json')
     
     if service_account and key_path and os.path.exists(key_path):
+        logger.info(f"Attempting GEE initialization with key file at: {key_path}")
         credentials = ee.ServiceAccountCredentials(service_account, key_path)
         ee.Initialize(credentials)
-        logger.info("Earth Engine initialized with service account")
+        ee_initialized = True
+        logger.info("Earth Engine successfully initialized with service account.")
     else:
-        ee.Initialize(project='uhi-dashboard-497915')
-        logger.info("Earth Engine initialized with default credentials")
+        project_id = os.environ.get('GEE_PROJECT_ID', 'uhi-dashboard-497915')
+        logger.warning(f"Key file missing or unreadable at '{key_path}'. Trying project id fallback: {project_id}")
+        ee.Initialize(project=project_id)
+        ee_initialized = True
+        logger.info("Earth Engine initialized with project credentials fallback.")
 except Exception as e:
-    logger.error(f"Failed to initialize Earth Engine: {e}")
-    ee.Initialize()
+    logger.error(f"CRITICAL: Failed to initialize Earth Engine core: {e}")
+    logger.warning("Backend will run with degraded capabilities. Earth Engine analytics are disabled until resolved.")
 
 # Initialize UHI Analyzer
 uhi_analyzer = UHIAnalyzer()
@@ -198,7 +205,7 @@ def call_gemini(prompt):
             msg='All configured Gemini models failed',
             hdrs=None,
             fp=io.BytesIO(error_body.encode('utf-8'))
-        )
+)
 
     raise RuntimeError('No Gemini models configured')
 
@@ -208,14 +215,12 @@ def health_check():
     return jsonify({
         'status': 'healthy',
         'timestamp': datetime.now().isoformat(),
-        'earth_engine': 'initialized'
+        'earth_engine': 'initialized' if ee_initialized else 'failed'
     })
 
 @app.route('/api/analyze', methods=['POST'])
 def analyze_uhi():
-    """
-    Main endpoint for UHI analysis
-    """
+    """Main endpoint for UHI analysis"""
     try:
         data = request.json
         
@@ -249,7 +254,7 @@ def analyze_uhi():
         # Run analysis
         result = uhi_analyzer.analyze_city(geometry, date_range, city_name)
         
-        # Cache result (with expiry in production)
+        # Cache result
         analysis_cache[cache_key] = result
         
         # Clean old cache entries if too many
@@ -266,9 +271,7 @@ def analyze_uhi():
 
 @app.route('/api/what-if', methods=['POST'])
 def what_if_scenario():
-    """
-    Run what-if scenario modeling
-    """
+    """Run what-if scenario modeling"""
     try:
         data = request.json
         area_geometry = data.get('area_geometry')
@@ -287,9 +290,7 @@ def what_if_scenario():
 
 @app.route('/api/ai-insights', methods=['POST'])
 def ai_insights():
-    """
-    Generate AI interpretation and planning recommendations from dashboard metrics.
-    """
+    """Generate AI interpretation and planning recommendations from dashboard metrics."""
     try:
         data = request.json or {}
         if 'analysis' not in data:
@@ -324,52 +325,21 @@ def ai_insights():
 
 @app.route('/api/cities', methods=['GET'])
 def get_sample_cities():
-    """
-    Return sample cities for quick analysis
-    """
+    """Return sample cities for quick analysis"""
     cities = [
-        {
-            'name': 'New York City, USA',
-            'lat': 40.7128,
-            'lon': -74.006,
-            'zoom': 11
-        },
-        {
-            'name': 'Tokyo, Japan',
-            'lat': 35.6762,
-            'lon': 139.6503,
-            'zoom': 11
-        },
-        {
-            'name': 'Mumbai, India',
-            'lat': 19.076,
-            'lon': 72.8777,
-            'zoom': 11
-        },
-        {
-            'name': 'London, UK',
-            'lat': 51.5074,
-            'lon': -0.1278,
-            'zoom': 11
-        },
-        {
-            'name': 'Sydney, Australia',
-            'lat': -33.8688,
-            'lon': 151.2093,
-            'zoom': 11
-        }
+        {'name': 'New York City, USA', 'lat': 40.7128, 'lon': -74.006, 'zoom': 11},
+        {'name': 'Tokyo, Japan', 'lat': 35.6762, 'lon': 139.6503, 'zoom': 11},
+        {'name': 'Mumbai, India', 'lat': 19.076, 'lon': 72.8777, 'zoom': 11},
+        {'name': 'London, UK', 'lat': 51.5074, 'lon': -0.1278, 'zoom': 11},
+        {'name': 'Sydney, Australia', 'lat': -33.8688, 'lon': 151.2093, 'zoom': 11}
     ]
     return jsonify(cities)
 
 @app.route('/api/export/report', methods=['POST'])
 def export_report():
-    """
-    Generate and download analysis report
-    """
+    """Generate and download analysis report"""
     try:
         data = request.json
-        # Generate PDF report (implementation depends on requirements)
-        # For now, return JSON summary
         return jsonify({
             'message': 'Report generation endpoint',
             'format': 'pdf',
@@ -379,5 +349,6 @@ def export_report():
         return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
+    # Binds to 0.0.0.0 and grabs PORT variable correctly for local or alternative deployment fallback
     port = int(os.environ.get('PORT', 5000))
-    app.run(debug=True, host='0.0.0.0', port=port)
+    app.run(debug=False, host='0.0.0.0', port=port)
